@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import {
   SCHEMA,
   HOSPITAL_TYPE_VALUES,
@@ -140,6 +139,30 @@ function toMetricValues(row: Record<string, unknown> | null): MetricValues {
   return r
 }
 
+// ── /api/db 프록시 호출 헬퍼 ─────────────────────────────────────────
+interface DbResponse {
+  ok:     boolean
+  rows?:  Record<string, unknown>[]
+  count?: number
+  error?: { message: string; code?: string; details?: string; hint?: string; raw?: string }
+}
+
+async function fetchTable(params: Record<string, string | number>): Promise<DbResponse> {
+  const qs = new URLSearchParams(
+    Object.entries(params).map(([k, v]) => [k, String(v)])
+  ).toString()
+  const res = await fetch(`/api/db?${qs}`)
+  if (!res.ok && res.status !== 200) {
+    // HTTP 레벨 오류 (500 etc) — 바디 파싱 시도
+    try {
+      return await res.json() as DbResponse
+    } catch {
+      return { ok: false, error: { message: `HTTP ${res.status} ${res.statusText}` } }
+    }
+  }
+  return await res.json() as DbResponse
+}
+
 // ── 메인 훅 ──────────────────────────────────────────────────────────
 export function useDashboardData(
   year:     number,
@@ -160,29 +183,33 @@ export function useDashboardData(
     setError(null)
 
     try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      )
-
       const N   = SCHEMA.MASTER.NAME
       const T   = SCHEMA.MASTER.TYPE
       const ID  = SCHEMA.MASTER.ID
       const MID = SCHEMA.METRICS.HOSPITAL_ID
 
       // ── STEP 1: hospital_master ─────────────────────────────────
-      const { data: allHospitals, error: masterErr } = await supabase
-        .from('hospital_master')
-        .select('*')
+      const masterRes = await fetchTable({ table: 'hospital_master', limit: 1000 })
 
-      if (masterErr) {
-        const err = parseSupabaseError(masterErr, 'hospital_master 조회')
-        console.error('[hospital_master 오류]', err.raw)
-        setError(err)
+      if (!masterRes.ok || masterRes.error) {
+        const err = masterRes.error ?? { message: '알 수 없는 오류' }
+        const detail: SupabaseErrorDetail = {
+          step:    'hospital_master 조회',
+          message: err.message,
+          code:    err.code,
+          details: err.details,
+          hint:    err.hint,
+          raw:     err.raw ?? JSON.stringify(err, null, 2),
+          type:    classifyError(err.message, err.code),
+        }
+        console.error('[hospital_master 오류]', detail.raw)
+        setError(detail)
         return
       }
 
-      if (!allHospitals?.length) {
+      const allHospitals = (masterRes.rows ?? []) as Record<string, unknown>[]
+
+      if (!allHospitals.length) {
         console.warn('[hospital_master] 데이터 0건')
         setTableRows([])
         setChartSeries([])
@@ -208,33 +235,40 @@ export function useDashboardData(
         displayHospitals = allHospitals
       }
 
-      const allIds = allHospitals.map(h => h[ID])
+      const allIds = allHospitals.map(h => String(h[ID]))
 
       // ── STEP 2: hospital_metrics 3시점 ──────────────────────────
+      const idList = allIds.join(',')
       const [curRes, pmRes, pyRes] = await Promise.all([
-        supabase.from('hospital_metrics').select('*')
-          .in(MID, allIds).eq(SCHEMA.METRICS.YEAR, year).eq(SCHEMA.METRICS.MONTH, month),
-        supabase.from('hospital_metrics').select('*')
-          .in(MID, allIds).eq(SCHEMA.METRICS.YEAR, pm.year).eq(SCHEMA.METRICS.MONTH, pm.month),
-        supabase.from('hospital_metrics').select('*')
-          .in(MID, allIds).eq(SCHEMA.METRICS.YEAR, year - 1).eq(SCHEMA.METRICS.MONTH, month),
+        fetchTable({ table: 'hospital_metrics', year,        month,    limit: 2000, ids: idList, idCol: MID }),
+        fetchTable({ table: 'hospital_metrics', year: pm.year, month: pm.month, limit: 2000, ids: idList, idCol: MID }),
+        fetchTable({ table: 'hospital_metrics', year: year - 1, month,  limit: 2000, ids: idList, idCol: MID }),
       ])
 
-      if (curRes.error) {
-        const err = parseSupabaseError(curRes.error, `hospital_metrics 조회 (${year}년 ${month}월)`)
-        console.error('[hospital_metrics 오류]', err.raw)
-        setError(err)
+      if (!curRes.ok || curRes.error) {
+        const err = curRes.error ?? { message: '알 수 없는 오류' }
+        const detail: SupabaseErrorDetail = {
+          step:    `hospital_metrics 조회 (${year}년 ${month}월)`,
+          message: err.message,
+          code:    err.code,
+          details: err.details,
+          hint:    err.hint,
+          raw:     err.raw ?? JSON.stringify(err, null, 2),
+          type:    classifyError(err.message, err.code),
+        }
+        console.error('[hospital_metrics 오류]', detail.raw)
+        setError(detail)
         return
       }
 
-      console.log('[hospital_metrics]', curRes.data?.length ?? 0, '건', '첫번째 행:', JSON.stringify(curRes.data?.[0]))
+      console.log('[hospital_metrics]', curRes.rows?.length ?? 0, '건')
 
       const toMap = (rows: Record<string, unknown>[]) =>
         Object.fromEntries(rows.map(r => [String(r[MID]), toMetricValues(r)]))
 
-      const curMap = toMap((curRes.data  ?? []) as Record<string, unknown>[])
-      const pmMap  = toMap((pmRes.data   ?? []) as Record<string, unknown>[])
-      const pyMap  = toMap((pyRes.data   ?? []) as Record<string, unknown>[])
+      const curMap = toMap((curRes.rows ?? []) as Record<string, unknown>[])
+      const pmMap  = toMap((pmRes.rows  ?? []) as Record<string, unknown>[])
+      const pyMap  = toMap((pyRes.rows  ?? []) as Record<string, unknown>[])
 
       // ── STEP 3: 테이블 행 구성 ─────────────────────────────────
       let rows: TableRow[]
@@ -267,7 +301,7 @@ export function useDashboardData(
         ]
       } else {
         rows = displayHospitals.map(h => {
-          const hid   = String(h[ID])
+          const hid    = String(h[ID])
           const isOurs = String(h[N] ?? '').includes(OUR_HOSPITAL_KEYWORD)
           return {
             id: hid, name: String(h[N] ?? ''), type: String(h[T] ?? ''),
