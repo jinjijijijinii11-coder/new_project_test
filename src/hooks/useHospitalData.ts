@@ -17,7 +17,9 @@ import {
   MOCK_REGION_DISTRIBUTION,
 } from '@/lib/mock-data'
 
-// Supabase가 연결되면 이 플래그를 true로 변경
+// ⚠️ 이 훅은 더 이상 사용되지 않습니다.
+// 메인 대시보드는 src/hooks/useDashboardData.ts 를 사용합니다.
+// This file is kept for reference only.
 const USE_REAL_DATA = false
 
 interface KpiData {
