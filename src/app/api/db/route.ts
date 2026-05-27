@@ -32,6 +32,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'table 파라미터 필요' }, { status: 400 })
   }
 
+  // ── distinct 단일 컬럼 조회 ──────────────────────────────────────────
+  const distinct = searchParams.get('distinct')  // e.g. 'source_month'
+  if (distinct) {
+    const supabase = createServerClient()
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select(distinct)
+        .limit(10000)
+      if (error) {
+        const raw = JSON.stringify(error, null, 2)
+        return NextResponse.json({ ok: false, error: { message: error.message, raw } }, { status: 500 })
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const values = [...new Set((data ?? []).map(r => (r as any)[distinct] as string))]
+        .filter(v => v != null && v !== '')
+        .sort()
+      return NextResponse.json({ ok: true, values })
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: { message: String(e), raw: String(e) } }, { status: 500 })
+    }
+  }
+
   const supabase = createServerClient()
 
   try {

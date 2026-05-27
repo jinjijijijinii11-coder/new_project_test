@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { Header }           from '@/components/layout/Header'
 import { TopNav }           from '@/components/dashboard/TopNav'
@@ -9,11 +9,8 @@ import { MetricsBarChart }  from '@/components/dashboard/MetricsBarChart'
 import { HospitalTable }    from '@/components/dashboard/HospitalTable'
 import { LoadingSpinner }   from '@/components/ui/LoadingSpinner'
 import { useDashboardData, ERROR_TYPE_LABELS } from '@/hooks/useDashboardData'
+import { useAvailableMonths } from '@/hooks/useAvailableMonths'
 import { CATEGORIES, GroupTab, CategoryKey } from '@/lib/metrics-config'
-
-// DB의 실제 데이터 기준월 (source_month = '2025-09')
-const INIT_YEAR  = 2025
-const INIT_MONTH = 9
 
 const ERROR_SOLUTIONS: Record<string, string[]> = {
   rls:     ['Supabase 대시보드 → Table Editor → hospital_metrics → RLS 탭 → 정책 추가 또는 비활성화'],
@@ -25,12 +22,54 @@ const ERROR_SOLUTIONS: Record<string, string[]> = {
 }
 
 export default function DashboardPage() {
-  const [year,     setYear]     = useState(INIT_YEAR)
-  const [month,    setMonth]    = useState(INIT_MONTH)
+  // 초기값은 현재 날짜 — DB 로드 완료 후 최신 source_month 로 덮어씀
+  const today  = new Date()
+  const [year,     setYear]     = useState(today.getFullYear())
+  const [month,    setMonth]    = useState(today.getMonth() + 1)
   const [groupTab, setGroupTab] = useState<GroupTab>('tertiary')
   const [category, setCategory] = useState<CategoryKey>('emergency')
   const [showRaw,  setShowRaw]  = useState(false)
 
+  // ── 사용 가능한 조회월 (DB 기반) ────────────────────────────────────
+  const { months: availableMonths, isLoading: isLoadingMonths } = useAvailableMonths()
+
+  // 가장 최신 source_month 로 초기 설정 (한 번만)
+  const initialized = useRef(false)
+  useEffect(() => {
+    if (initialized.current || availableMonths.length === 0) return
+    initialized.current = true
+    const latest = availableMonths[availableMonths.length - 1]  // 'YYYY-MM'
+    const [y, m] = latest.split('-').map(Number)
+    setYear(y)
+    setMonth(m)
+  }, [availableMonths])
+
+  // 연도별 목록 (내림차순)
+  const availableYears = useMemo(
+    () => [...new Set(availableMonths.map(s => Number(s.split('-')[0])))].sort((a, b) => b - a),
+    [availableMonths],
+  )
+
+  // 선택된 연도에서 사용 가능한 월 목록 (오름차순)
+  const availableMonthsForYear = useMemo(
+    () => availableMonths
+      .filter(s => s.startsWith(String(year) + '-'))
+      .map(s => Number(s.split('-')[1])),
+    [availableMonths, year],
+  )
+
+  // 연도 변경 시 → 해당 연도에 없는 월이면 최신 월로 조정
+  const handleYearChange = useCallback((y: number) => {
+    setYear(y)
+    const monthsForYear = availableMonths
+      .filter(s => s.startsWith(String(y) + '-'))
+      .map(s => Number(s.split('-')[1]))
+    if (monthsForYear.length > 0 && !monthsForYear.includes(month)) {
+      setMonth(monthsForYear[monthsForYear.length - 1])
+    }
+  }, [availableMonths, month])
+
+  // ── 대시보드 데이터 ──────────────────────────────────────────────────
   const selectedCategory = useMemo(
     () => CATEGORIES.find(c => c.key === category)!,
     [category],
@@ -46,7 +85,15 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
-      <Header year={year} month={month} onYearChange={setYear} onMonthChange={setMonth} />
+      <Header
+        year={year}
+        month={month}
+        availableYears={availableYears}
+        availableMonthsForYear={availableMonthsForYear}
+        isLoadingMonths={isLoadingMonths}
+        onYearChange={handleYearChange}
+        onMonthChange={setMonth}
+      />
       <TopNav value={groupTab} onChange={setGroupTab} />
 
       <main className="flex-1 max-w-screen-2xl mx-auto w-full px-6 py-6 space-y-6">
@@ -119,7 +166,7 @@ export default function DashboardPage() {
           <div className="card bg-amber-50 border border-amber-200 text-sm">
             <h3 className="font-semibold text-amber-800 mb-2">📋 {year}년 {month}월 데이터가 없습니다</h3>
             <ol className="list-decimal list-inside text-amber-700 space-y-1 text-xs">
-              <li>상단에서 실제 데이터가 있는 연도/월을 선택하세요 (현재 DB: 2025년 9월)</li>
+              <li>상단에서 실제 데이터가 있는 연도/월을 선택하세요</li>
               <li>source_month 컬럼 값이 {year}-{String(month).padStart(2,'0')} 형식인지 확인</li>
               <li>major_category 값이 &quot;{selectedCategory.dbCategory}&quot;와 일치하는지 확인</li>
             </ol>
