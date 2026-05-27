@@ -5,6 +5,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * 공통 숫자 포맷 함수
+ * - 소수점 첫째 자리까지 반올림
+ * - 정수는 소수점 표시 안 함 (2106.0 → 2106)
+ * - 소수는 1자리 표시 (623.909 → 623.9)
+ * - isPercent: true면 % 접미사 추가
+ */
+export function fmtNum(v: number | null | undefined, isPercent?: boolean): string {
+  if (v === null || v === undefined) return '-'
+  const rounded = Math.round(v * 10) / 10
+  const str = Number.isInteger(rounded)
+    ? rounded.toLocaleString('ko-KR')
+    : rounded.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return isPercent ? `${str}%` : str
+}
+
 export function formatNumber(value: number, unit?: string): string {
   if (value === 0) return '-'
   if (value >= 100_000_000) {

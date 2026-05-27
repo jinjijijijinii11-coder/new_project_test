@@ -6,11 +6,11 @@ import {
 } from 'recharts'
 import { MetricField } from '@/lib/metrics-config'
 import { ChartSeries } from '@/hooks/useDashboardData'
-import { formatAxisNumber } from '@/lib/utils'
+import { formatAxisNumber, fmtNum } from '@/lib/utils'
 
 interface Props {
   metrics: MetricField[]
-  series:  ChartSeries[]   // 우리병원, 상급종합 평균, 종합병원 평균
+  series:  ChartSeries[]   // 본원, 상급종합 평균, 종합병원 평균
   month:   number
 }
 
@@ -22,7 +22,7 @@ function MiniBarChart({
   metric: MetricField
   series: ChartSeries[]
 }) {
-  // recharts 데이터: [{ name: '우리병원', value: 120 }, ...]
+  // recharts 데이터: [{ name: '본원', value: 120 }, ...]
   const data = series.map(s => ({
     name:  s.name,
     value: s.values[metric.key] ?? null,
@@ -42,9 +42,7 @@ function MiniBarChart({
             <span className="text-slate-500">{p.name}</span>
             <span className="font-medium text-slate-800 ml-1">
               {p.value !== null
-                ? `${metric.isPercent
-                    ? p.value.toFixed(1)
-                    : p.value.toLocaleString('ko-KR')}${metric.unit ? ' ' + metric.unit : ''}`
+                ? `${fmtNum(p.value, metric.isPercent)}${metric.unit && !metric.isPercent ? ' ' + metric.unit : ''}`
                 : '-'}
             </span>
           </div>
@@ -96,9 +94,7 @@ function MiniBarChart({
             <span className="text-xs text-slate-500 truncate max-w-[100px]">{d.name}</span>
             <span className="text-xs font-semibold text-slate-800">
               {d.value !== null
-                ? `${metric.isPercent
-                    ? d.value.toFixed(1)
-                    : d.value.toLocaleString('ko-KR')}${metric.unit ? metric.unit : ''}`
+                ? `${fmtNum(d.value, metric.isPercent)}${metric.unit && !metric.isPercent ? metric.unit : ''}`
                 : '-'}
             </span>
           </div>

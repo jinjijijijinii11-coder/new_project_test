@@ -1,6 +1,6 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn, fmtNum } from '@/lib/utils'
 import { MetricField } from '@/lib/metrics-config'
 import { TableRow } from '@/hooks/useDashboardData'
 
@@ -11,49 +11,35 @@ interface Props {
   month:   number
 }
 
-// ── 수치 포맷 ─────────────────────────────────────────────────────────
-function fmtValue(v: number | null | undefined, isPercent?: boolean): string {
-  if (v === null || v === undefined) return '-'
-  if (isPercent) return `${v.toFixed(1)}%`
-  return v.toLocaleString('ko-KR')
-}
-
-// ── 증감 포맷 ─────────────────────────────────────────────────────────
+// ── 증감 표시 ─────────────────────────────────────────────────────────
 function Delta({
   current,
   prev,
   isPercent,
-  unit,
 }: {
   current:   number | null | undefined
   prev:      number | null | undefined
   isPercent?: boolean
-  unit?:     string
 }) {
   if (current == null || prev == null) {
     return <span className="text-slate-300 text-xs">-</span>
   }
-  const diff = current - prev
-  const pct  = prev !== 0 ? ((diff / prev) * 100).toFixed(1) : null
+  const diff   = current - prev
+  const isPos  = diff > 0
+  const isZero = Math.abs(diff) < 0.00001
 
-  const isPos = diff > 0
-  const isZero = diff === 0
+  const colorCls = isZero ? 'text-slate-400' : isPos ? 'text-emerald-600' : 'text-red-500'
+  const arrow    = isZero ? '' : isPos ? '▲' : '▼'
 
-  const colorCls = isZero
-    ? 'text-slate-400'
-    : isPos
-    ? 'text-emerald-600'
-    : 'text-red-500'
-
-  const arrow = isZero ? '' : isPos ? '▲' : '▼'
-  const diffStr = isPercent
-    ? `${Math.abs(diff).toFixed(1)}%p`
-    : Math.abs(diff).toLocaleString('ko-KR')
+  // 변화량 표시: 소수점 1자리, 정수면 소수점 없음
+  const absDiff  = Math.abs(diff)
+  const diffStr  = isPercent
+    ? `${fmtNum(absDiff)}%p`
+    : fmtNum(absDiff)
 
   return (
     <span className={cn('text-xs font-medium', colorCls)}>
       {arrow} {diffStr}
-      {pct && <span className="text-[10px] ml-0.5 opacity-75">({pct}%)</span>}
     </span>
   )
 }
@@ -67,7 +53,7 @@ function rowBg(row: TableRow) {
 
 // ── 메인 테이블 ──────────────────────────────────────────────────────
 export function HospitalTable({ rows, metrics, year, month }: Props) {
-  const pm = month === 1 ? 12 : month - 1
+  const pm     = month === 1 ? 12 : month - 1
   const pmYear = month === 1 ? year - 1 : year
 
   if (!rows.length) {
@@ -91,7 +77,7 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
         <div className="flex items-center gap-3 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded bg-blue-100 border border-blue-300" />
-            <span className="text-slate-500">우리병원</span>
+            <span className="text-slate-500">본원</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded bg-amber-50 border border-amber-200" />
@@ -102,7 +88,6 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          {/* 헤더: 2-row (지표명 + 현재/전월/전년) */}
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
               <th
@@ -140,7 +125,7 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
           </thead>
 
           <tbody>
-            {rows.map((row, ri) => (
+            {rows.map(row => (
               <tr
                 key={row.id}
                 className={cn(
@@ -158,7 +143,7 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
                   <div className="flex items-center gap-2">
                     {row.isOurHospital && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary-600 text-white shrink-0">
-                        우리
+                        본원
                       </span>
                     )}
                     {row.isAverage && (
@@ -176,53 +161,44 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
                 </td>
 
                 {/* 지표별 데이터 */}
-                {metrics.map(m => (
-                  <>
-                    {/* 현재월 */}
-                    <td key={`${row.id}-${m.key}-cur`} className="text-right px-3 py-2.5 font-semibold text-slate-800 border-l border-slate-100 whitespace-nowrap">
-                      {fmtValue(row.current[m.key] as number | null, m.isPercent)}
-                      {row.current[m.key] != null && m.unit && !m.isPercent
-                        ? <span className="text-slate-400 font-normal ml-0.5">{m.unit}</span>
-                        : null}
-                    </td>
-                    {/* 전월 대비 */}
-                    <td key={`${row.id}-${m.key}-pm`} className="text-center px-2 py-2.5 whitespace-nowrap">
-                      <Delta
-                        current={row.current[m.key] as number | null}
-                        prev={row.prevMonth[m.key] as number | null}
-                        isPercent={m.isPercent}
-                        unit={m.unit}
-                      />
-                    </td>
-                    {/* 전년 대비 */}
-                    <td key={`${row.id}-${m.key}-py`} className="text-center px-2 py-2.5 whitespace-nowrap border-r border-slate-100">
-                      <Delta
-                        current={row.current[m.key] as number | null}
-                        prev={row.prevYear[m.key] as number | null}
-                        isPercent={m.isPercent}
-                        unit={m.unit}
-                      />
-                    </td>
-                  </>
-                ))}
+                {metrics.map(m => {
+                  const cur  = row.current[m.key]  as number | null | undefined
+                  const prev = row.prevMonth[m.key] as number | null | undefined
+                  const pyr  = row.prevYear[m.key]  as number | null | undefined
+                  return (
+                    <>
+                      {/* 현재월 */}
+                      <td key={`${row.id}-${m.key}-cur`} className="text-right px-3 py-2.5 font-semibold text-slate-800 border-l border-slate-100 whitespace-nowrap">
+                        {fmtNum(cur, m.isPercent)}
+                        {cur != null && m.unit && !m.isPercent
+                          ? <span className="text-slate-400 font-normal ml-0.5">{m.unit}</span>
+                          : null}
+                      </td>
+                      {/* 전월 대비 */}
+                      <td key={`${row.id}-${m.key}-pm`} className="text-center px-2 py-2.5 whitespace-nowrap">
+                        <Delta current={cur} prev={prev} isPercent={m.isPercent} />
+                      </td>
+                      {/* 전년 대비 */}
+                      <td key={`${row.id}-${m.key}-py`} className="text-center px-2 py-2.5 whitespace-nowrap border-r border-slate-100">
+                        <Delta current={cur} prev={pyr} isPercent={m.isPercent} />
+                      </td>
+                    </>
+                  )
+                })}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* 컬럼 미설정 안내 */}
       {rows.length > 0 &&
         metrics.every(m => rows[0]?.current[m.key] == null) && (
           <div className="px-6 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
-            ⚠️ 데이터가 없습니다. hospital_metrics 테이블에서
-            <code className="bg-amber-100 px-1 rounded mx-1">source_month</code>
-            /
-            <code className="bg-amber-100 px-1 rounded mx-1">major_category</code>
-            /
+            ⚠️ 데이터가 없습니다. hospital_metrics 테이블의
+            <code className="bg-amber-100 px-1 rounded mx-1">source_month</code> /
+            <code className="bg-amber-100 px-1 rounded mx-1">major_category</code> /
             <code className="bg-amber-100 px-1 rounded mx-1">hospital_group</code>
-            필터 값을 확인하세요.
-            <a href="/test" className="ml-2 underline font-medium">연결 확인 →</a>
+            값을 확인하세요.
           </div>
         )}
     </div>

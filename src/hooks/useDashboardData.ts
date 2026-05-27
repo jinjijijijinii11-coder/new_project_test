@@ -66,8 +66,8 @@ export interface TableRow {
   isOurHospital: boolean
   isAverage:     boolean
   current:       MetricValues   // metric_name → current_month_value
-  prevMonth:     MetricValues   // metric_name → current_month_value - mom_change
-  prevYear:      MetricValues   // metric_name → current_month_value - yoy_change
+  prevMonth:     MetricValues   // metric_name → current - mom_change
+  prevYear:      MetricValues   // metric_name → current - yoy_change
 }
 
 export interface ChartSeries {
@@ -94,13 +94,13 @@ const COLORS = {
   general:     '#f59e0b',
 }
 
-// ── hospital_group → DB 값 매핑 ───────────────────────────────────────
+// ── hospital_group DB 값 ──────────────────────────────────────────────
 const GROUP_DB: Record<Exclude<GroupTab, 'all'>, string> = {
   tertiary: '상급종합병원',
   general:  '종합병원',
 }
 
-// ── /api/db 호출 헬퍼 ─────────────────────────────────────────────────
+// ── /api/db 호출 ──────────────────────────────────────────────────────
 interface DbResponse {
   ok:       boolean
   rows?:    Record<string, unknown>[]
@@ -116,37 +116,30 @@ async function dbFetch(params: Record<string, string>): Promise<DbResponse> {
   catch { return { ok: false, error: { message: `HTTP ${res.status}`, raw: '' } } }
 }
 
-// ── 수치 추출 ─────────────────────────────────────────────────────────
+// ── 수치 추출 ──────────────────────────────────────────────────────────
 function toNum(v: unknown): number | null {
   if (typeof v === 'number' && !isNaN(v)) return v
-  if (typeof v === 'string') {
-    const n = parseFloat(v)
-    return isNaN(n) ? null : n
-  }
+  if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? null : n }
   return null
 }
 
-// ── 평균 계산 ─────────────────────────────────────────────────────────
+// ── 평균 계산 ──────────────────────────────────────────────────────────
 function calcAvg(rows: MetricValues[], key: string): number | null {
   const vals = rows.map(r => r[key]).filter((v): v is number => typeof v === 'number')
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
 }
 
-// ── hospital_metrics long-format → 병원별 집계 ───────────────────────
-//
-// 실제 컬럼:
-//   hospital_code, hospital_group, hospital_name, is_our_hospital
-//   major_category, metric_name
-//   current_month_value, mom_change, yoy_change
-//
+// ── 병원별 집계 (long-format → wide-format) ───────────────────────────
+// 실제 DB 컬럼: hospital_code, hospital_group, hospital_name, is_our_hospital,
+//              major_category, metric_name, current_month_value, mom_change, yoy_change
 interface HospitalEntry {
   code:          string
   name:          string
   group:         string
   isOurHospital: boolean
-  current:   MetricValues   // metric_name → current_month_value
-  prevMonth: MetricValues   // metric_name → current - mom_change
-  prevYear:  MetricValues   // metric_name → current - yoy_change
+  current:   MetricValues
+  prevMonth: MetricValues
+  prevYear:  MetricValues
 }
 
 function buildHospitalMap(rows: Record<string, unknown>[]): Map<string, HospitalEntry> {
@@ -161,7 +154,6 @@ function buildHospitalMap(rows: Record<string, unknown>[]): Map<string, Hospital
         code,
         name:          String(row['hospital_name'] ?? ''),
         group:         String(row['hospital_group'] ?? ''),
-        // is_our_hospital은 boolean 또는 hospital_code='21C'
         isOurHospital: !!row['is_our_hospital'] || code === OUR_HOSPITAL_CODE,
         current:   {},
         prevMonth: {},
@@ -173,8 +165,7 @@ function buildHospitalMap(rows: Record<string, unknown>[]): Map<string, Hospital
     const metricName = String(row['metric_name'] ?? '').trim()
     if (!metricName) continue
 
-    // 같은 metric_name이 이미 있으면 첫 번째 값 유지
-    if (metricName in entry.current) continue
+    if (metricName in entry.current) continue  // 첫 번째 값 유지
 
     const cur = toNum(row['current_month_value'])
     const mom = toNum(row['mom_change'])
@@ -206,23 +197,18 @@ export function useDashboardData(
     setError(null)
 
     try {
-      // source_month = 'YYYY-MM'
       const sourceMonth = `${year}-${String(month).padStart(2, '0')}`
 
-      // hospital_group 필터: 상급종합병원 | 종합병원 | (없음=전체)
-      const hospitalGroup = groupTab !== 'all' ? GROUP_DB[groupTab] : undefined
-
-      // ── API 파라미터 ─────────────────────────────────────────────
+      // ── 전체 조회 (hospital_group 필터 없이) ─────────────────────
+      // 클라이언트에서 그룹 + 본원 합산 필터링
       const params: Record<string, string> = {
         table:         'hospital_metrics',
-        sourceMonth,                          // source_month = 'YYYY-MM'
-        majorCategory: category.dbCategory,  // major_category = '응급실' 등
+        sourceMonth,
+        majorCategory: category.dbCategory,
         limit:         '5000',
       }
-      if (hospitalGroup) params.hospitalGroup = hospitalGroup  // hospital_group 필터
 
       console.log('[대시보드] 조회 파라미터:', params)
-
       const res = await dbFetch(params)
 
       if (!res.ok || res.error) {
@@ -241,10 +227,8 @@ export function useDashboardData(
       }
 
       const rows = (res.rows ?? []) as Record<string, unknown>[]
-      console.log(`[대시보드] 조회 결과: ${rows.length}행`)
-      if (rows.length > 0) {
-        console.log('[대시보드] 첫 행 샘플:', JSON.stringify(rows[0]))
-      }
+      console.log(`[대시보드] 전체 조회 결과: ${rows.length}행`)
+      if (rows.length > 0) console.log('[대시보드] 샘플:', JSON.stringify(rows[0]))
 
       if (!rows.length) {
         setTableRows([])
@@ -256,29 +240,47 @@ export function useDashboardData(
 
       // ── 병원별 집계 ──────────────────────────────────────────────
       const hospitalMap = buildHospitalMap(rows)
-      const hospitals   = Array.from(hospitalMap.values())
+      const allHospitals = Array.from(hospitalMap.values())
+      const ourHospital  = allHospitals.find(h => h.isOurHospital)
 
-      // 우리병원 최상단, 이후 가나다순
-      hospitals.sort((a, b) => {
+      // ── 탭별 표시 병원 결정 ──────────────────────────────────────
+      // 규칙: 상급종합병원/종합병원 탭 → 해당 그룹 + 본원(21C) 항상 포함
+      //       전체 탭 → 전체 병원
+      let displayHospitals: HospitalEntry[]
+
+      if (groupTab === 'all') {
+        displayHospitals = allHospitals
+      } else {
+        const groupValue    = GROUP_DB[groupTab]
+        const groupHospitals = allHospitals.filter(h => h.group === groupValue)
+        const ourAlreadyIn  = ourHospital && groupHospitals.some(h => h.code === ourHospital.code)
+
+        displayHospitals = ourHospital && !ourAlreadyIn
+          ? [...groupHospitals, ourHospital]
+          : groupHospitals
+      }
+
+      // 본원 최상단, 이후 가나다순
+      displayHospitals.sort((a, b) => {
         if (a.isOurHospital && !b.isOurHospital) return -1
         if (!a.isOurHospital && b.isOurHospital) return 1
         return a.name.localeCompare(b.name, 'ko')
       })
 
-      console.log(`[대시보드] 병원 수: ${hospitals.length}`, hospitals.map(h => `${h.name}(${h.code})`))
+      console.log(`[대시보드] 표시 병원 ${displayHospitals.length}곳:`, displayHospitals.map(h => h.name))
 
       const metrics  = category.metrics
       const metaKeys = metrics.map(m => m.key)
 
-      // ── 그룹 평균 ────────────────────────────────────────────────
+      // ── 그룹 평균 (displayHospitals 기준) ────────────────────────
       const avgCurrent:   MetricValues = {}
       const avgPrevMonth: MetricValues = {}
       const avgPrevYear:  MetricValues = {}
 
       for (const key of metaKeys) {
-        avgCurrent[key]   = calcAvg(hospitals.map(h => h.current),   key)
-        avgPrevMonth[key] = calcAvg(hospitals.map(h => h.prevMonth), key)
-        avgPrevYear[key]  = calcAvg(hospitals.map(h => h.prevYear),  key)
+        avgCurrent[key]   = calcAvg(displayHospitals.map(h => h.current),   key)
+        avgPrevMonth[key] = calcAvg(displayHospitals.map(h => h.prevMonth), key)
+        avgPrevYear[key]  = calcAvg(displayHospitals.map(h => h.prevYear),  key)
       }
 
       const avgLabel =
@@ -286,9 +288,9 @@ export function useDashboardData(
         : groupTab === 'general' ? '종합병원 평균'
         : '전체 평균'
 
-      // ── 테이블 행 구성 ───────────────────────────────────────────
+      // ── 테이블 행 ────────────────────────────────────────────────
       const tableRowsData: TableRow[] = [
-        ...hospitals.map(h => ({
+        ...displayHospitals.map(h => ({
           id:            h.code,
           name:          h.name,
           group:         h.group,
@@ -301,7 +303,7 @@ export function useDashboardData(
         {
           id:            '__avg__',
           name:          avgLabel,
-          group:         hospitalGroup ?? '전체',
+          group:         groupTab === 'all' ? '전체' : GROUP_DB[groupTab],
           isOurHospital: false,
           isAverage:     true,
           current:       avgCurrent,
@@ -311,14 +313,13 @@ export function useDashboardData(
       ]
 
       // ── 차트 시리즈 ──────────────────────────────────────────────
-      const ourHospital = hospitals.find(h => h.isOurHospital)
       const chartSeriesData: ChartSeries[] = []
 
       if (ourHospital) {
         const vals: MetricValues = {}
         for (const key of metaKeys) vals[key] = ourHospital.current[key] ?? null
         chartSeriesData.push({
-          name:   `우리병원 (${ourHospital.name})`,
+          name:   `본원 (${ourHospital.name})`,
           color:  COLORS.ourHospital,
           values: vals,
         })
