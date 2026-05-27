@@ -46,8 +46,11 @@ function Delta({
 
 // ── 셀 배경 ──────────────────────────────────────────────────────────
 function rowBg(row: TableRow) {
-  if (row.isOurHospital) return 'bg-blue-50'
-  if (row.isAverage)     return 'bg-amber-50/60'
+  if (row.isOurHospital)              return 'bg-blue-50'
+  if (row.id === '__avg_tertiary__')  return 'bg-emerald-50/70'
+  if (row.id === '__avg_general__')   return 'bg-amber-50/70'
+  if (row.id === '__avg_all__')       return 'bg-slate-100/80'
+  if (row.isAverage)                  return 'bg-amber-50/60'   // fallback
   return ''
 }
 
@@ -74,14 +77,22 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
             {year}년 {month}월 기준 · 전월({pmYear}년 {pm}월) · 전년동월({year - 1}년 {month}월) 비교
           </p>
         </div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-xs flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded bg-blue-100 border border-blue-300" />
             <span className="text-slate-500">본원</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-amber-50 border border-amber-200" />
-            <span className="text-slate-500">그룹 평균</span>
+            <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-300" />
+            <span className="text-slate-500">상급종합 평균</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" />
+            <span className="text-slate-500">종합병원 평균</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded bg-slate-200 border border-slate-300" />
+            <span className="text-slate-500">전체 평균</span>
           </div>
         </div>
       </div>

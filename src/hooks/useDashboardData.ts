@@ -92,6 +92,7 @@ const COLORS = {
   ourHospital: '#3b82f6',
   tertiary:    '#10b981',
   general:     '#f59e0b',
+  overall:     '#8b5cf6',
 }
 
 // ── hospital_group DB 값 ──────────────────────────────────────────────
@@ -243,6 +244,30 @@ export function useDashboardData(
       const allHospitals = Array.from(hospitalMap.values())
       const ourHospital  = allHospitals.find(h => h.isOurHospital)
 
+      // ── 그룹별 분류 ──────────────────────────────────────────────
+      const tertiaryHospitals = allHospitals.filter(h => h.group === GROUP_DB.tertiary)
+      const generalHospitals  = allHospitals.filter(h => h.group === GROUP_DB.general)
+
+      const metrics  = category.metrics
+      const metaKeys = metrics.map(m => m.key)
+
+      // ── 그룹별 평균 계산 ──────────────────────────────────────────
+      const computeAvg = (list: HospitalEntry[]) => {
+        const cur: MetricValues = {}
+        const pm:  MetricValues = {}
+        const py:  MetricValues = {}
+        for (const key of metaKeys) {
+          cur[key] = calcAvg(list.map(h => h.current),   key)
+          pm[key]  = calcAvg(list.map(h => h.prevMonth), key)
+          py[key]  = calcAvg(list.map(h => h.prevYear),  key)
+        }
+        return { cur, pm, py }
+      }
+
+      const tertiaryAvg = computeAvg(tertiaryHospitals)
+      const generalAvg  = computeAvg(generalHospitals)
+      const overallAvg  = computeAvg(allHospitals)
+
       // ── 탭별 표시 병원 결정 ──────────────────────────────────────
       // 규칙: 상급종합병원/종합병원 탭 → 해당 그룹 + 본원(21C) 항상 포함
       //       전체 탭 → 전체 병원
@@ -251,70 +276,85 @@ export function useDashboardData(
       if (groupTab === 'all') {
         displayHospitals = allHospitals
       } else {
-        const groupValue    = GROUP_DB[groupTab]
+        const groupValue     = GROUP_DB[groupTab]
         const groupHospitals = allHospitals.filter(h => h.group === groupValue)
-        const ourAlreadyIn  = ourHospital && groupHospitals.some(h => h.code === ourHospital.code)
-
+        const ourAlreadyIn   = ourHospital && groupHospitals.some(h => h.code === ourHospital.code)
         displayHospitals = ourHospital && !ourAlreadyIn
           ? [...groupHospitals, ourHospital]
           : groupHospitals
       }
 
-      // 본원 최상단, 이후 가나다순
-      displayHospitals.sort((a, b) => {
-        if (a.isOurHospital && !b.isOurHospital) return -1
-        if (!a.isOurHospital && b.isOurHospital) return 1
-        return a.name.localeCompare(b.name, 'ko')
-      })
+      // ── 테이블 행: 본원 → 평균 → 나머지 병원(가나다순) ──────────
+      const ourRow    = displayHospitals.find(h => h.isOurHospital)
+      const otherRows = displayHospitals
+        .filter(h => !h.isOurHospital)
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
 
       console.log(`[대시보드] 표시 병원 ${displayHospitals.length}곳:`, displayHospitals.map(h => h.name))
 
-      const metrics  = category.metrics
-      const metaKeys = metrics.map(m => m.key)
+      // 평균 행 생성 헬퍼
+      const makeAvgRow = (
+        id: string, name: string, group: string,
+        avg: { cur: MetricValues; pm: MetricValues; py: MetricValues },
+      ): TableRow => ({
+        id, name, group,
+        isOurHospital: false,
+        isAverage:     true,
+        current:       avg.cur,
+        prevMonth:     avg.pm,
+        prevYear:      avg.py,
+      })
 
-      // ── 그룹 평균 (displayHospitals 기준) ────────────────────────
-      const avgCurrent:   MetricValues = {}
-      const avgPrevMonth: MetricValues = {}
-      const avgPrevYear:  MetricValues = {}
-
-      for (const key of metaKeys) {
-        avgCurrent[key]   = calcAvg(displayHospitals.map(h => h.current),   key)
-        avgPrevMonth[key] = calcAvg(displayHospitals.map(h => h.prevMonth), key)
-        avgPrevYear[key]  = calcAvg(displayHospitals.map(h => h.prevYear),  key)
+      // 탭별 평균 행
+      let avgTableRows: TableRow[]
+      if (groupTab === 'all') {
+        avgTableRows = [
+          ...(tertiaryHospitals.length > 0
+            ? [makeAvgRow('__avg_tertiary__', '상급종합병원 평균', GROUP_DB.tertiary, tertiaryAvg)]
+            : []),
+          ...(generalHospitals.length > 0
+            ? [makeAvgRow('__avg_general__',  '종합병원 평균',     GROUP_DB.general,  generalAvg)]
+            : []),
+          makeAvgRow('__avg_all__', '전체 평균', '전체', overallAvg),
+        ]
+      } else if (groupTab === 'tertiary') {
+        avgTableRows = [makeAvgRow('__avg_tertiary__', '상급종합병원 평균', GROUP_DB.tertiary, tertiaryAvg)]
+      } else {
+        avgTableRows = [makeAvgRow('__avg_general__',  '종합병원 평균',     GROUP_DB.general,  generalAvg)]
       }
-
-      const avgLabel =
-        groupTab === 'tertiary' ? '상급종합병원 평균'
-        : groupTab === 'general' ? '종합병원 평균'
-        : '전체 평균'
 
       // ── 테이블 행 ────────────────────────────────────────────────
       const tableRowsData: TableRow[] = [
-        ...displayHospitals.map(h => ({
+        // 1. 본원
+        ...(ourRow ? [{
+          id:            ourRow.code,
+          name:          ourRow.name,
+          group:         ourRow.group,
+          isOurHospital: true,
+          isAverage:     false,
+          current:       ourRow.current,
+          prevMonth:     ourRow.prevMonth,
+          prevYear:      ourRow.prevYear,
+        }] : []),
+        // 2. 평균 행 (탭별)
+        ...avgTableRows,
+        // 3. 나머지 병원 (가나다순)
+        ...otherRows.map(h => ({
           id:            h.code,
           name:          h.name,
           group:         h.group,
-          isOurHospital: h.isOurHospital,
+          isOurHospital: false,
           isAverage:     false,
           current:       h.current,
           prevMonth:     h.prevMonth,
           prevYear:      h.prevYear,
         })),
-        {
-          id:            '__avg__',
-          name:          avgLabel,
-          group:         groupTab === 'all' ? '전체' : GROUP_DB[groupTab],
-          isOurHospital: false,
-          isAverage:     true,
-          current:       avgCurrent,
-          prevMonth:     avgPrevMonth,
-          prevYear:      avgPrevYear,
-        },
       ]
 
       // ── 차트 시리즈 ──────────────────────────────────────────────
       const chartSeriesData: ChartSeries[] = []
 
+      // 본원
       if (ourHospital) {
         const vals: MetricValues = {}
         for (const key of metaKeys) vals[key] = ourHospital.current[key] ?? null
@@ -325,13 +365,18 @@ export function useDashboardData(
         })
       }
 
-      const avgVals: MetricValues = {}
-      for (const key of metaKeys) avgVals[key] = avgCurrent[key] ?? null
-      chartSeriesData.push({
-        name:   avgLabel,
-        color:  groupTab === 'general' ? COLORS.general : COLORS.tertiary,
-        values: avgVals,
-      })
+      // 탭별 그룹 평균 시리즈
+      if (groupTab === 'all') {
+        if (tertiaryHospitals.length > 0)
+          chartSeriesData.push({ name: '상급종합병원 평균', color: COLORS.tertiary, values: tertiaryAvg.cur })
+        if (generalHospitals.length > 0)
+          chartSeriesData.push({ name: '종합병원 평균',     color: COLORS.general,  values: generalAvg.cur })
+        chartSeriesData.push(  { name: '전체 평균',         color: COLORS.overall,  values: overallAvg.cur })
+      } else if (groupTab === 'tertiary') {
+        chartSeriesData.push(  { name: '상급종합병원 평균', color: COLORS.tertiary, values: tertiaryAvg.cur })
+      } else {
+        chartSeriesData.push(  { name: '종합병원 평균',     color: COLORS.general,  values: generalAvg.cur })
+      }
 
       setTableRows(tableRowsData)
       setChartSeries(chartSeriesData)
