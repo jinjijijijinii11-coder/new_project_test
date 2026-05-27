@@ -14,6 +14,12 @@ interface Props {
   month:   number
 }
 
+// label_path 축약 ('A > B > C' → 'B / C')
+function compactLabel(label: string): string {
+  const parts = label.split(' > ')
+  return parts.length > 1 ? parts.slice(1).join(' / ') : parts[0]
+}
+
 // ── 개별 지표 미니 차트 ───────────────────────────────────────────────
 function MiniBarChart({
   metric,
@@ -35,7 +41,7 @@ function MiniBarChart({
     if (!active || !payload?.length) return null
     return (
       <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs">
-        <p className="font-semibold text-slate-700 mb-1">{metric.label}</p>
+        <p className="font-semibold text-slate-700 mb-1">{compactLabel(metric.label)}</p>
         {payload.map((p: any) => (
           <div key={p.name} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -53,7 +59,7 @@ function MiniBarChart({
 
   return (
     <div className="bg-slate-50 rounded-xl p-4 flex flex-col gap-2">
-      <p className="text-xs font-semibold text-slate-600">{metric.label}</p>
+      <p className="text-xs font-semibold text-slate-600">{compactLabel(metric.label)}</p>
       {!hasData ? (
         <div className="h-28 flex items-center justify-center">
           <span className="text-xs text-slate-400">데이터 없음</span>
@@ -117,7 +123,7 @@ export function MetricsBarChart({ metrics, series, month }: Props) {
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-bold text-slate-800">핵심 지표 비교</h2>
+        <h2 className="text-base font-bold text-slate-800">지표별 비교 차트</h2>
         <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
           {month}월 기준 · 그룹 비교
         </span>

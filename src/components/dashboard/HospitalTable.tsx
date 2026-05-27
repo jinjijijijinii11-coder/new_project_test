@@ -44,6 +44,12 @@ function Delta({
   )
 }
 
+// ── label_path 축약 ('A > B > C' → 'B / C') ──────────────────────────
+function compactLabel(label: string): string {
+  const parts = label.split(' > ')
+  return parts.length > 1 ? parts.slice(1).join(' / ') : parts[0]
+}
+
 // ── 셀 배경 ──────────────────────────────────────────────────────────
 function rowBg(row: TableRow) {
   if (row.isOurHospital)              return 'bg-blue-50'
@@ -97,13 +103,17 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* 가로+세로 스크롤, 높이 고정 → 헤더 sticky */}
+      <div className="overflow-auto max-h-[calc(100vh-260px)]">
         <table className="w-full text-xs">
           <thead>
+            {/* 1행: 병원명(rowSpan=2) + 지표명 */}
             <tr className="border-b border-slate-200 bg-slate-50">
               <th
                 rowSpan={2}
-                className="text-left px-4 py-2 font-semibold text-slate-600 whitespace-nowrap sticky left-0 bg-slate-50 z-10 border-r border-slate-200 min-w-[140px]"
+                className="text-left px-4 py-2 font-semibold text-slate-600 whitespace-nowrap
+                           sticky left-0 top-0 z-30 bg-slate-50
+                           border-r border-slate-200 min-w-[140px]"
               >
                 병원명
               </th>
@@ -111,23 +121,31 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
                 <th
                   key={m.key}
                   colSpan={3}
-                  className="text-center px-2 py-2 font-semibold text-slate-600 whitespace-nowrap border-l border-slate-200"
+                  className="text-center px-2 py-2 font-semibold text-slate-600 whitespace-nowrap
+                             border-l border-slate-200 sticky top-0 z-20 bg-slate-50"
                 >
-                  {m.label}
+                  {compactLabel(m.label)}
                   {m.unit && <span className="text-slate-400 font-normal ml-1">({m.unit})</span>}
                 </th>
               ))}
             </tr>
+            {/* 2행: 현재월 / 전월대비 / 전년대비 */}
             <tr className="border-b border-slate-200 bg-slate-50">
               {metrics.map(m => (
                 <>
-                  <th key={`${m.key}-cur`} className="text-center px-2 py-1.5 font-medium text-slate-500 whitespace-nowrap border-l border-slate-100">
+                  <th key={`${m.key}-cur`}
+                    className="text-center px-2 py-1.5 font-medium text-slate-500 whitespace-nowrap
+                               border-l border-slate-100 sticky top-[36px] z-20 bg-slate-50">
                     {month}월
                   </th>
-                  <th key={`${m.key}-pm`} className="text-center px-2 py-1.5 font-medium text-slate-400 whitespace-nowrap">
+                  <th key={`${m.key}-pm`}
+                    className="text-center px-2 py-1.5 font-medium text-slate-400 whitespace-nowrap
+                               sticky top-[36px] z-20 bg-slate-50">
                     전월대비
                   </th>
-                  <th key={`${m.key}-py`} className="text-center px-2 py-1.5 font-medium text-slate-400 whitespace-nowrap">
+                  <th key={`${m.key}-py`}
+                    className="text-center px-2 py-1.5 font-medium text-slate-400 whitespace-nowrap
+                               sticky top-[36px] z-20 bg-slate-50">
                     전년대비
                   </th>
                 </>

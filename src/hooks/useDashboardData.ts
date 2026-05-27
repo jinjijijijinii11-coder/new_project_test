@@ -130,9 +130,38 @@ function calcAvg(rows: MetricValues[], key: string): number | null {
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
 }
 
+// ── % 지표 판별 ──────────────────────────────────────────────────────
+function isPercentMetric(name: string): boolean {
+  return /율$|률$/.test(name)
+}
+
+// ── DB rows → MetricField[] (display_order 정렬) ──────────────────────
+function extractMetrics(rows: Record<string, unknown>[]): MetricField[] {
+  const seen = new Map<string, MetricField>()
+  for (const row of rows) {
+    const metricName   = String(row['metric_name']   ?? '').trim()
+    if (!metricName) continue
+    const subCat       = String(row['sub_category']  ?? '').trim()
+    const labelPath    = String(row['label_path']    ?? '').trim()
+    const displayOrder = Number(row['display_order'] ?? 9999)
+    const key = subCat ? `${metricName}||${subCat}` : metricName
+    if (!seen.has(key)) {
+      seen.set(key, {
+        key,
+        label:        labelPath || (subCat ? `${metricName} (${subCat})` : metricName),
+        isPercent:    isPercentMetric(metricName),
+        displayOrder,
+      })
+    }
+  }
+  return Array.from(seen.values())
+    .sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999))
+}
+
 // ── 병원별 집계 (long-format → wide-format) ───────────────────────────
 // 실제 DB 컬럼: hospital_code, hospital_group, hospital_name, is_our_hospital,
-//              major_category, metric_name, current_month_value, mom_change, yoy_change
+//              major_category, metric_name, sub_category, label_path, display_order,
+//              current_month_value, mom_change, yoy_change
 interface HospitalEntry {
   code:          string
   name:          string
@@ -166,15 +195,19 @@ function buildHospitalMap(rows: Record<string, unknown>[]): Map<string, Hospital
     const metricName = String(row['metric_name'] ?? '').trim()
     if (!metricName) continue
 
-    if (metricName in entry.current) continue  // 첫 번째 값 유지
+    // sub_category 가 있으면 복합 키 사용 (중복 방지)
+    const subCat    = String(row['sub_category'] ?? '').trim()
+    const metricKey = subCat ? `${metricName}||${subCat}` : metricName
+
+    if (metricKey in entry.current) continue  // 첫 번째 값 유지
 
     const cur = toNum(row['current_month_value'])
     const mom = toNum(row['mom_change'])
     const yoy = toNum(row['yoy_change'])
 
-    entry.current[metricName]   = cur
-    entry.prevMonth[metricName] = (cur !== null && mom !== null) ? cur - mom : null
-    entry.prevYear[metricName]  = (cur !== null && yoy !== null) ? cur - yoy : null
+    entry.current[metricKey]   = cur
+    entry.prevMonth[metricKey] = (cur !== null && mom !== null) ? cur - mom : null
+    entry.prevYear[metricKey]  = (cur !== null && yoy !== null) ? cur - yoy : null
   }
 
   return map
@@ -248,7 +281,9 @@ export function useDashboardData(
       const tertiaryHospitals = allHospitals.filter(h => h.group === GROUP_DB.tertiary)
       const generalHospitals  = allHospitals.filter(h => h.group === GROUP_DB.general)
 
-      const metrics  = category.metrics
+      // ── DB rows에서 지표 목록 자동 추출 (display_order 정렬) ─────
+      const dynamicMetrics = extractMetrics(rows)
+      const metrics  = dynamicMetrics.length > 0 ? dynamicMetrics : category.metrics
       const metaKeys = metrics.map(m => m.key)
 
       // ── 그룹별 평균 계산 ──────────────────────────────────────────

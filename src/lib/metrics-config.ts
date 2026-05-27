@@ -8,10 +8,11 @@ export type CategoryKey = 'emergency' | 'surgery' | 'inpatient' | 'discharge' | 
 export type GroupTab    = 'tertiary' | 'general' | 'all'
 
 export interface MetricField {
-  key:        string    // = metric_name DB 값
-  label:      string    // 화면 표시 레이블
-  unit?:      string    // 명, 건, %, 일
-  isPercent?: boolean   // true면 소수점 1자리 % 포맷
+  key:           string    // = metric_name DB 값 (sub_category 있을 땐 'metric_name||sub_category')
+  label:         string    // 화면 표시 레이블 (label_path 우선)
+  unit?:         string    // 명, 건, %, 일
+  isPercent?:    boolean   // true면 소수점 1자리 % 포맷
+  displayOrder?: number    // display_order DB 값 (정렬용)
 }
 
 export interface CategoryConfig {
