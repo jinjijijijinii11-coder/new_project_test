@@ -2,7 +2,7 @@
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, Cell,
+  ResponsiveContainer, Cell,
 } from 'recharts'
 import { MetricField } from '@/lib/metrics-config'
 import { ChartSeries } from '@/hooks/useDashboardData'
@@ -10,14 +10,13 @@ import { formatAxisNumber, fmtNum } from '@/lib/utils'
 
 interface Props {
   metrics: MetricField[]
-  series:  ChartSeries[]   // 본원, 상급종합 평균, 종합병원 평균
+  series:  ChartSeries[]
   month:   number
 }
 
-// label_path 축약 ('A > B > C' → 'B / C')
-function compactLabel(label: string): string {
-  const parts = label.split(' > ')
-  return parts.length > 1 ? parts.slice(1).join(' / ') : parts[0]
+// metric_name / sub_category 조합 제목
+function chartTitle(m: MetricField): string {
+  return m.subCategory ? `${m.metricName} / ${m.subCategory}` : m.metricName
 }
 
 // ── 개별 지표 미니 차트 ───────────────────────────────────────────────
@@ -28,7 +27,6 @@ function MiniBarChart({
   metric: MetricField
   series: ChartSeries[]
 }) {
-  // recharts 데이터: [{ name: '본원', value: 120 }, ...]
   const data = series.map(s => ({
     name:  s.name,
     value: s.values[metric.key] ?? null,
@@ -41,7 +39,7 @@ function MiniBarChart({
     if (!active || !payload?.length) return null
     return (
       <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs">
-        <p className="font-semibold text-slate-700 mb-1">{compactLabel(metric.label)}</p>
+        <p className="font-semibold text-slate-700 mb-1">{chartTitle(metric)}</p>
         {payload.map((p: any) => (
           <div key={p.name} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -59,7 +57,7 @@ function MiniBarChart({
 
   return (
     <div className="bg-slate-50 rounded-xl p-4 flex flex-col gap-2">
-      <p className="text-xs font-semibold text-slate-600">{compactLabel(metric.label)}</p>
+      <p className="text-xs font-semibold text-slate-600 leading-tight">{chartTitle(metric)}</p>
       {!hasData ? (
         <div className="h-28 flex items-center justify-center">
           <span className="text-xs text-slate-400">데이터 없음</span>
@@ -75,9 +73,7 @@ function MiniBarChart({
               axisLine={false}
             />
             <YAxis
-              tickFormatter={v =>
-                metric.isPercent ? `${v}%` : formatAxisNumber(v)
-              }
+              tickFormatter={v => metric.isPercent ? `${v}%` : formatAxisNumber(v)}
               tick={{ fontSize: 9, fill: '#94a3b8' }}
               tickLine={false}
               axisLine={false}
@@ -139,12 +135,10 @@ export function MetricsBarChart({ metrics, series, month }: Props) {
         ))}
       </div>
 
-      {/* 지표별 미니 차트 그리드 */}
+      {/* 지표별 미니 차트 그리드 (3열) */}
       <div
         className="grid gap-3"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(metrics.length, 3)}, 1fr)`,
-        }}
+        style={{ gridTemplateColumns: `repeat(${Math.min(metrics.length, 3)}, 1fr)` }}
       >
         {metrics.map(metric => (
           <MiniBarChart key={metric.key} metric={metric} series={series} />
