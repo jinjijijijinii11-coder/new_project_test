@@ -172,6 +172,15 @@ function extractMetrics(
     })
   }
 
+  // sub_category 있는 행이 존재하면 → 빈 sub_category 행(합계성 상위 항목) 제거
+  for (const entries of grouped.values()) {
+    if (entries.some(e => e.subCategory !== '')) {
+      const filtered = entries.filter(e => e.subCategory !== '')
+      entries.length = 0
+      entries.push(...filtered)
+    }
+  }
+
   // 각 metric_name 내에서 sub_category 우선순위 정렬
   const result: MetricField[] = []
   for (const metricName of metricOrder) {
