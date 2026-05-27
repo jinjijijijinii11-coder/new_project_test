@@ -8,6 +8,7 @@ import { CategoryTabs }     from '@/components/dashboard/CategoryTabs'
 import { MetricsBarChart }  from '@/components/dashboard/MetricsBarChart'
 import { HospitalTable }    from '@/components/dashboard/HospitalTable'
 import { LoadingSpinner }   from '@/components/ui/LoadingSpinner'
+import { LoginScreen }      from '@/components/auth/LoginScreen'
 import { useDashboardData, ERROR_TYPE_LABELS } from '@/hooks/useDashboardData'
 import { useAvailableMonths } from '@/hooks/useAvailableMonths'
 import { CATEGORIES, GroupTab, CategoryKey } from '@/lib/metrics-config'
@@ -22,6 +23,25 @@ const ERROR_SOLUTIONS: Record<string, string[]> = {
 }
 
 export default function DashboardPage() {
+  // ── 인증 상태 (sessionStorage 기반) ─────────────────────────────────
+  const [authChecked, setAuthChecked] = useState(false)
+  const [isAuth,      setIsAuth]      = useState(false)
+
+  useEffect(() => {
+    const ok = sessionStorage.getItem('dashboard_auth') === '1'
+    setIsAuth(ok)
+    setAuthChecked(true)
+  }, [])
+
+  // 인증 확인 전에는 아무것도 렌더링하지 않음 (flash 방지)
+  if (!authChecked) return null
+  if (!isAuth) return <LoginScreen onSuccess={() => setIsAuth(true)} />
+
+  return <Dashboard />
+}
+
+// ── 대시보드 본체 (인증 후 렌더) ─────────────────────────────────────
+function Dashboard() {
   // 초기값은 현재 날짜 — DB 로드 완료 후 최신 source_month 로 덮어씀
   const [year,     setYear]     = useState(() => new Date().getFullYear())
   const [month,    setMonth]    = useState(() => new Date().getMonth() + 1)
@@ -37,19 +57,17 @@ export default function DashboardPage() {
   useEffect(() => {
     if (initialized.current || availableMonths.length === 0) return
     initialized.current = true
-    const latest = availableMonths[availableMonths.length - 1]  // 'YYYY-MM'
+    const latest = availableMonths[availableMonths.length - 1]
     const [y, m] = latest.split('-').map(Number)
     setYear(y)
     setMonth(m)
   }, [availableMonths])
 
-  // 연도별 목록 (내림차순)
   const availableYears = useMemo(
     () => [...new Set(availableMonths.map(s => Number(s.split('-')[0])))].sort((a, b) => b - a),
     [availableMonths],
   )
 
-  // 선택된 연도에서 사용 가능한 월 목록 (오름차순)
   const availableMonthsForYear = useMemo(
     () => availableMonths
       .filter(s => s.startsWith(String(year) + '-'))
@@ -57,7 +75,6 @@ export default function DashboardPage() {
     [availableMonths, year],
   )
 
-  // 연도 변경 시 → 해당 연도에 없는 월이면 최신 월로 조정
   const handleYearChange = useCallback((y: number) => {
     setYear(y)
     const monthsForYear = availableMonths
@@ -68,7 +85,6 @@ export default function DashboardPage() {
     }
   }, [availableMonths, month])
 
-  // ── 대시보드 데이터 ──────────────────────────────────────────────────
   const selectedCategory = useMemo(
     () => CATEGORIES.find(c => c.key === category)!,
     [category],
