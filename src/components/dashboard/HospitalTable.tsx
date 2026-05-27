@@ -215,10 +215,14 @@ export function HospitalTable({ rows, metrics, year, month }: Props) {
       {rows.length > 0 &&
         metrics.every(m => rows[0]?.current[m.key] == null) && (
           <div className="px-6 py-3 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
-            ⚠️ 데이터가 없거나 컬럼명이 다릅니다.{' '}
-            <code className="bg-amber-100 px-1 rounded">src/lib/metrics-config.ts</code>의
-            key 값을 실제 DB 컬럼명으로 수정해주세요.
-            <a href="/test" className="ml-2 underline font-medium">컬럼 확인 →</a>
+            ⚠️ 데이터가 없습니다. hospital_metrics 테이블에서
+            <code className="bg-amber-100 px-1 rounded mx-1">source_month</code>
+            /
+            <code className="bg-amber-100 px-1 rounded mx-1">major_category</code>
+            /
+            <code className="bg-amber-100 px-1 rounded mx-1">hospital_group</code>
+            필터 값을 확인하세요.
+            <a href="/test" className="ml-2 underline font-medium">연결 확인 →</a>
           </div>
         )}
     </div>
