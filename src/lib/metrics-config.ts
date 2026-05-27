@@ -1,108 +1,97 @@
 // =====================================================================
-// 📋 metrics-config.ts
-// Supabase 테이블 컬럼명 매핑 설정
-//
-// ⚠️ 실제 컬럼명 확인 방법:
-//    localhost:3000/test → 테이블 조회 → 컬럼 목록 확인
-//    확인 후 아래 key 값을 실제 컬럼명으로 수정하세요
+// 📋 metrics-config.ts — 실제 DB 컬럼 기반 설정
+// hospital_metrics 테이블의 실제 컬럼명과 값에 맞춰져 있습니다
 // =====================================================================
 
-// ── 스키마 설정 (컬럼명 다를 시 여기만 수정) ─────────────────────────
-export const SCHEMA = {
-  // hospital_master 컬럼명
-  MASTER: {
-    ID:   'id',              // PK
-    NAME: 'name',            // 병원명 (ex: 'hospital_name', '병원명')
-    TYPE: 'type',            // 병원 종별 (ex: 'hospital_type', 'category')
-  },
-  // hospital_metrics 컬럼명
-  METRICS: {
-    HOSPITAL_ID: 'hospital_id', // FK → hospital_master.id
-    YEAR:        'year',
-    MONTH:       'month',
-  },
-} as const
-
-// 병원 종별 타입 값 (hospital_master.type 실제 저장값)
-export const HOSPITAL_TYPE_VALUES = {
-  TERTIARY: '상급종합',   // 상급종합병원
-  GENERAL:  '종합병원',   // 종합병원
-} as const
-
-// 우리병원 식별 키워드 (hospital_master.name 에서 포함 여부 검색)
-export const OUR_HOSPITAL_KEYWORD = '21C'
-
-// ── 카테고리별 지표 정의 ──────────────────────────────────────────────
-
+// ── 공통 타입 ─────────────────────────────────────────────────────────
 export type CategoryKey = 'emergency' | 'surgery' | 'inpatient' | 'discharge' | 'outpatient'
 export type GroupTab    = 'tertiary' | 'general' | 'all'
 
 export interface MetricField {
-  key:        string    // hospital_metrics 컬럼명
+  key:        string    // = metric_name DB 값
   label:      string    // 화면 표시 레이블
   unit?:      string    // 명, 건, %, 일
   isPercent?: boolean   // true면 소수점 1자리 % 포맷
 }
 
 export interface CategoryConfig {
-  key:     CategoryKey
-  label:   string
-  metrics: MetricField[]
+  key:        CategoryKey
+  label:      string      // 탭 표시 레이블
+  dbCategory: string      // major_category DB 값
+  metrics:    MetricField[]
 }
 
-// ⚠️ key 값이 실제 hospital_metrics 컬럼명과 다르면 수정 필요
+// ── 카테고리 + 지표 정의 ─────────────────────────────────────────────
+// key 값 = hospital_metrics.metric_name 실제 값
 export const CATEGORIES: CategoryConfig[] = [
   {
-    key:   'emergency',
-    label: '응급실',
+    key:        'emergency',
+    label:      '응급실',
+    dbCategory: '응급실',
     metrics: [
-      { key: 'er_beds',              label: '응급실 병상수',  unit: '개' },
-      { key: 'er_patients',          label: '진료환자(실)',   unit: '명' },
-      { key: 'er_annual_patients',   label: '진료환자(연)',   unit: '명' },
-      { key: 'er_inpatients',        label: '응급입원환자',   unit: '명' },
-      { key: 'er_admission_rate',    label: '응급환자입원율', unit: '%', isPercent: true },
-      { key: 'er_transfer_rate',     label: '응급경유입원율', unit: '%', isPercent: true },
+      { key: '병상수',         label: '응급 병상수',    unit: '개' },
+      { key: '진료환자(실)',   label: '진료환자(실)',   unit: '명' },
+      { key: '진료환자(연)',   label: '진료환자(연)',   unit: '명' },
+      { key: '응급입원환자',   label: '응급입원환자',   unit: '명' },
+      { key: '응급환자입원율', label: '응급환자입원율', unit: '%', isPercent: true },
+      { key: '응급경유입원율', label: '응급경유입원율', unit: '%', isPercent: true },
     ],
   },
   {
-    key:   'surgery',
-    label: '수술실',
+    key:        'surgery',
+    label:      '수술실',
+    dbCategory: '수술실',
     metrics: [
-      { key: 'surgery_count',        label: '수술건수',       unit: '건' },
-      { key: 'surgery_inpatients',   label: '수술입원환자',   unit: '명' },
-      { key: 'or_utilization_rate',  label: '수술실 가동률',  unit: '%', isPercent: true },
+      { key: '병상수',            label: '수술실 병상수',     unit: '개' },
+      { key: '수술건수(수술방)',  label: '수술건수(수술방)', unit: '건' },
+      { key: '수술건수(DSC)',     label: '수술건수(DSC)',    unit: '건' },
     ],
   },
   {
-    key:   'inpatient',
-    label: '입원',
+    key:        'inpatient',
+    label:      '입원',
+    dbCategory: '입원',
     metrics: [
-      { key: 'inpatient_count',      label: '입원환자수',     unit: '명' },
-      { key: 'available_beds',       label: '가동병상수',     unit: '개' },
-      { key: 'bed_occupancy_rate',   label: '병상가동률',     unit: '%', isPercent: true },
+      { key: '환자수',    label: '입원환자수(일반)', unit: '명' },
+      { key: '입원율',    label: '입원율',          unit: '%', isPercent: true },
+      { key: '병상이용율', label: '병상이용율(일반)', unit: '%', isPercent: true },
+      { key: '평균재원일', label: '평균재원일(일반)', unit: '일' },
     ],
   },
   {
-    key:   'discharge',
-    label: '퇴원',
+    key:        'discharge',
+    label:      '퇴원',
+    dbCategory: '퇴원',
     metrics: [
-      { key: 'discharge_count',      label: '퇴원환자수',     unit: '명' },
-      { key: 'avg_length_of_stay',   label: '평균재원일수',   unit: '일' },
+      { key: '퇴원환자',              label: '퇴원환자(일반)',      unit: '명' },
+      { key: '100병상당 퇴원환자수',  label: '100병상당 퇴원환자', unit: '명' },
+      { key: '재입원율',              label: '재입원율',            unit: '%', isPercent: true },
     ],
   },
   {
-    key:   'outpatient',
-    label: '외래',
+    key:        'outpatient',
+    label:      '외래',
+    dbCategory: '외래',
     metrics: [
-      { key: 'outpatient_count',     label: '외래환자수',     unit: '명' },
-      { key: 'new_patient_count',    label: '신환외래',       unit: '명' },
-      { key: 'revisit_rate',         label: '재진율',         unit: '%', isPercent: true },
+      { key: '외래환자수', label: '외래환자수', unit: '명' },
+      { key: '외래신환',   label: '외래신환',  unit: '명' },
+      { key: '신환율',     label: '신환율',    unit: '%', isPercent: true },
     ],
   },
 ]
 
+// ── 병원 그룹 탭 표시 레이블 ─────────────────────────────────────────
 export const GROUP_TAB_LABELS: Record<GroupTab, string> = {
   tertiary: '상급종합병원',
   general:  '종합병원',
   all:      '전체',
 }
+
+// ── hospital_group DB 값 매핑 ─────────────────────────────────────────
+export const HOSPITAL_GROUP_VALUES: Record<Exclude<GroupTab, 'all'>, string> = {
+  tertiary: '상급종합병원',
+  general:  '종합병원',
+}
+
+// ── 우리병원 코드 ─────────────────────────────────────────────────────
+export const OUR_HOSPITAL_CODE = '21C'
