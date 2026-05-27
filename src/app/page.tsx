@@ -23,9 +23,8 @@ const ERROR_SOLUTIONS: Record<string, string[]> = {
 
 export default function DashboardPage() {
   // 초기값은 현재 날짜 — DB 로드 완료 후 최신 source_month 로 덮어씀
-  const today  = new Date()
-  const [year,     setYear]     = useState(today.getFullYear())
-  const [month,    setMonth]    = useState(today.getMonth() + 1)
+  const [year,     setYear]     = useState(() => new Date().getFullYear())
+  const [month,    setMonth]    = useState(() => new Date().getMonth() + 1)
   const [groupTab, setGroupTab] = useState<GroupTab>('tertiary')
   const [category, setCategory] = useState<CategoryKey>('emergency')
   const [showRaw,  setShowRaw]  = useState(false)

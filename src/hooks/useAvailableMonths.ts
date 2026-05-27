@@ -3,15 +3,14 @@
 import { useState, useEffect } from 'react'
 
 export interface AvailableMonthsData {
-  /** 'YYYY-MM' 형식 오름차순 정렬 */
+  /** 'YYYY-MM' 형식 오름차순 정렬 — 마지막 원소가 최신 */
   months:    string[]
   isLoading: boolean
   error:     string | null
 }
 
 /**
- * hospital_metrics.source_month 의 distinct 값을 조회해 반환합니다.
- * 최신 source_month 가 배열의 마지막 원소입니다.
+ * /api/months 에서 hospital_metrics 의 distinct source_month 목록을 가져옵니다.
  */
 export function useAvailableMonths(): AvailableMonthsData {
   const [months,    setMonths]  = useState<string[]>([])
@@ -19,13 +18,13 @@ export function useAvailableMonths(): AvailableMonthsData {
   const [error,     setError]   = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/db?table=hospital_metrics&distinct=source_month')
+    fetch('/api/months')
       .then(r => r.json())
-      .then((data: { ok: boolean; values?: string[]; error?: { message: string } }) => {
-        if (data.ok && Array.isArray(data.values)) {
-          setMonths(data.values.sort())   // 오름차순 → 마지막이 최신
+      .then((data: { ok: boolean; months?: string[]; error?: string }) => {
+        if (data.ok && Array.isArray(data.months) && data.months.length > 0) {
+          setMonths(data.months)   // 이미 오름차순 정렬됨
         } else {
-          setError(data.error?.message ?? '조회 실패')
+          setError(data.error ?? '조회 실패')
         }
       })
       .catch((e: unknown) => setError(String(e)))
